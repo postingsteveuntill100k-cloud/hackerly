@@ -1,0 +1,50 @@
+name: Hackerly
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Seed a database
+        run: npm run seed
+      - name: Tests
+        run: npm test
+
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Start the portal
+        run: |
+          npm run seed
+          PORT=10000 node src/server.js &
+          for i in $(seq 1 40); do
+            curl -sf http://localhost:10000/healthz && break
+            sleep 0.5
+          done
+      - name: DOGFOOD acceptance
+        run: python3 run.py .dogfood.toml
+      - name: Keep the report
+        if: always()
+        run: python3 run.py .dogfood.toml > acceptance-report.txt
+      - name: Commit a changed report
+        if: always()
+        run: |
+          git config user.name  "hackerly-ci"
+          git config user.email "ci@hackerly.local"
+          git add acceptance-report.txt
+          git diff --cached --quiet || git commit -m "chore: refresh acceptance report"
+          git push || true

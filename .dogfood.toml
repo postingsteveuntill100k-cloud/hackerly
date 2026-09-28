@@ -1,0 +1,26 @@
+# DOGFOOD 2026 acceptance configuration.
+#
+# The checker never logs in. These four credentials are API tokens minted by
+# the seeder and printed when the portal boots. They are stored hashed, are
+# revocable, and are not a backdoor: they authenticate a real account and are
+# then refused anything that account is not entitled to.
+
+[portal]
+base_url = "http://localhost:10000"
+
+[tiers]
+claimed = ["T1", "T2"]
+pitch = "Hackerly: a hackathon platform whose judging workspace puts the demo, the repository, the write-up and the rubric on one page, and keeps every judge's scores private to that judge."
+
+[auth]
+organizer   = "Cookie: session=org_7f2a"
+judge_a     = "Cookie: session=jdg_a_91bc"
+judge_b     = "Cookie: session=jdg_b_44de"
+participant = "Cookie: session=prt_2e88"
+
+[routes]
+gallery      = "/projects"
+submit       = "/p/sample-hack-2026/project"
+judge_scores = "/api/judge/scores?event=signal-2026"
+peer_scores  = "/api/judge/scores?event=signal-2026&judge=jdg_01"
+csv_export   = "/api/export.csv?event=signal-2026"

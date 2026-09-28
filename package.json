@@ -1,0 +1,32 @@
+{
+  "name": "hackerly",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hackerly — the hackathon platform. Discover, host, build, judge and showcase hackathons.",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/db/seed/cli.js",
+    "reset": "node src/db/seed/cli.js --fresh",
+    "check:db": "node src/db/seed/cli.js --check",
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "acceptance": "python3 run.py .dogfood.toml",
+    "critic": "python3 tools/critic.py"
+  },
+  "keywords": [
+    "hackathon",
+    "platform",
+    "judging",
+    "rubric",
+    "self-hosted"
+  ],
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

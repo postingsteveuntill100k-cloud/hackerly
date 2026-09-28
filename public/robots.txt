@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /o/
+Disallow: /j/
+Disallow: /p/
+Disallow: /api/
+Disallow: /signin
+Disallow: /signup
+Disallow: /judge/

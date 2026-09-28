@@ -1,0 +1,49 @@
+# Hackerly — one command, a working portal.
+#
+#   docker compose up --build
+#   open http://localhost:8080
+#
+# No cloud account, no hosted database, no outbound request. The SQLite file
+# lives in a named volume, so restarting or rebuilding never loses data.
+
+services:
+  hackerly:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hackerly:latest
+    container_name: hackerly
+    ports:
+      - "${HACKERLY_PORT:-8080}:8080"
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATABASE_PATH: /data/hackerly.db
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://localhost:8080}"
+      # Set both to enable Firebase authentication. Neither is required.
+      FIREBASE_VERIFY_ID_TOKENS: "${FIREBASE_VERIFY_ID_TOKENS:-false}"
+      FIREBASE_PROJECT_ID: "${FIREBASE_PROJECT_ID:-}"
+    volumes:
+      - hackerly_data:/data
+    restart: unless-stopped
+    # Hackerly makes no outbound request at runtime — no CDN, no telemetry, no
+    # license check. `network_mode: none` is deliberately not set here because
+    # Docker cannot publish ports without a network; the guarantee is
+    # structural (see src/lib/firebase.js) and is covered by the test suite
+    # rather than by a network namespace.
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+      start_period: 8s
+
+volumes:
+  hackerly_data:

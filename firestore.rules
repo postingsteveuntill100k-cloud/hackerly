@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// Hackerly stores its own state in SQLite. Firestore is not used for
+// application data. This ruleset denies everything, so if a credential is
+// ever misconfigured the failure is loud and immediate rather than a quiet
+// open database.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
