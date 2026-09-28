@@ -50,6 +50,9 @@ function listEventPages() {
     .then((body) => (body.events || []).flatMap((e) => [
       { url: `/h/${e.slug}`, file: `h/${e.slug}/index.html` },
       { url: `/h/${e.slug}/projects`, file: `h/${e.slug}/projects/index.html` },
+      // The results tab is public either way: published rankings, or the
+      // honest "not published yet" page. Both are worth serving.
+      { url: `/h/${e.slug}/results`, file: `h/${e.slug}/results/index.html` },
     ]))
     .catch(() => {
       console.warn('  ! could not read the event catalogue; exporting the fixed pages only');

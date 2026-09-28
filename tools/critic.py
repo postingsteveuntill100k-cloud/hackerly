@@ -491,18 +491,41 @@ def critic_host_new(b, r):
     b.fill("input[name=endsAt]", "2027-04-10T18:00")
     b.fill("input[name=submissionsCloseAt]", "2027-04-10T16:00")
     b.click("form[action='/host/new'] button[type=submit]", wait=1.8)
-    created = "/o/critic-test-event" in b.url()
+    url = b.url()
+    created = "/o/critic-test-event" in url
+    slug = url.rstrip("/").split("/")[-1] if created else None
     f.append({"verdict": "good" if created else "bad",
-              "note": f"Event created and console opened ({b.url()})" if created else f"Event creation failed, landed on {b.url()}",
+              "note": f"Event created and console opened ({url})" if created else f"Event creation failed, landed on {url}",
               "shot": b.shot("host-created")})
 
     if created:
         ot = b.text()
         f.append({"verdict": "good" if "track" in ot.lower() else "bad",
                   "note": "New event is seeded with tracks/rubric guidance" if "track" in ot.lower() else "New event gives no next step"})
-        b.go("/h/critic-test-event", wait=1.0)
+
+        b.go(f"/h/{slug}", wait=1.0)
         f.append({"verdict": "good" if "Critic Test Event" in b.text() else "bad",
                   "note": "New event has a public page", "shot": b.shot("host-public")})
+
+        # A mistake must be reversible without deleting anything.
+        b.go(f"/o/{slug}", wait=0.9)
+        # The confirm() guard is dismissed by the harness, then the button is
+        # clicked exactly as a person would click it.
+        b.js("() => { window.confirm = () => true; return true; }")
+        b.click(".console__head form button[type=submit]", wait=1.2)
+        b.go("/hackathons", wait=0.9)
+        still = "Critic Test Event" in b.text()
+        f.append({"verdict": "bad" if still else "good",
+                  "note": "Archiving removes the event from the directory without deleting it"
+                  if not still else "An archived event is still listed in the directory"})
+
+        b.go(f"/o/{slug}", wait=0.9)
+        b.js("() => { window.confirm = () => true; return true; }")
+        label = b.js("() => { const x = document.querySelector('.console__head form button'); return x ? x.textContent.trim() : ''; }")
+        can_restore = "unarchive" in label.lower() or "restore" in label.lower()
+        f.append({"verdict": "good" if can_restore else "bad",
+                  "note": "An archived event can be restored" if can_restore else "An archived event cannot be restored"})
+
     b.sign_out()
 
     r.persona("ORGANISER CREATING AN EVENT", "Can I create and configure a hackathon from nothing?", f)

@@ -59,6 +59,40 @@ router.get('/projects', (req, res) => {
   }));
 });
 
+router.get('/o', (req, res, next) => {
+  try {
+    const user = authz.requireUser(req.actor);
+    const rows = db().prepare(`
+      SELECT DISTINCT e.* FROM events e
+      JOIN event_roles r ON r.event_id = e.id
+      WHERE r.user_id = ? AND r.role IN ('organiser','coordinator')
+      ORDER BY e.starts_at DESC
+    `).all(user.id);
+
+    const shape = (e) => {
+      const view = queries.publicEventColumns(e);
+      const stats = queries.eventStats(e.id);
+      const snapshot = queries.organiserSnapshot(e.id);
+      const phase = lifecycle.phase(e);
+      return {
+        slug: view.slug,
+        name: view.name,
+        phase,
+        formatLabel: { online: 'Online', in_person: 'In person', hybrid: 'Hybrid' }[view.format] || view.format,
+        detail: `${stats.registrations} registered · ${stats.projects} submission${stats.projects === 1 ? '' : 's'} · ${snapshot.reviewsDone} of ${snapshot.assigned} reviews in`,
+        dates: lifecycle.fmtRange(view.startsAt, view.endsAt, view.timezone),
+        action: phase === 'results' ? 'View results' : 'Open console',
+      };
+    };
+
+    res.send(views.organiserHomePage({
+      user: req.actor.user,
+      events: rows.filter((e) => e.status !== 'archived').map(shape),
+      archived: rows.filter((e) => e.status === 'archived').map(shape),
+    }));
+  } catch (err) { next(err); }
+});
+
 router.get('/host', (req, res) => {
   // The page explains what hosting involves; that is worth reading before
   // anyone is asked to make an account.

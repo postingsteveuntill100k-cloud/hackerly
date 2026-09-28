@@ -90,7 +90,9 @@ function listEvents({ search = '', topic = '', format = '', state = '', limit = 
   const params = [];
   if (!includePrivate) {
     where.push("visibility = 'public'");
-    where.push("status != 'draft'");
+    // A draft is not published; an archived event has been withdrawn from the
+    // directory by its organiser. Neither belongs in a listing.
+    where.push("status = 'published'");
   }
   if (search) {
     where.push('(lower(name) LIKE ? OR lower(tagline) LIKE ? OR lower(city) LIKE ? OR lower(country) LIKE ?)');
@@ -120,7 +122,10 @@ function eventTopics() {
   for (const e of db().prepare("SELECT topics FROM events WHERE visibility = 'public' AND status != 'draft'").all()) {
     for (const t of json(e.topics, [])) counts.set(t, (counts.get(t) || 0) + 1);
   }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, n }));
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const shared = sorted.filter(([, n]) => n > 1);
+  // Fall back to the single-event topics rather than showing no filters at all.
+  return (shared.length ? shared : sorted).map(([name, n]) => ({ name, n }));
 }
 
 function tracksFor(eventId) {

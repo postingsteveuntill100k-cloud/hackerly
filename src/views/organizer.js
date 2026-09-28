@@ -132,6 +132,12 @@ function overviewPage({ event, snapshot, phase, nextDeadline, resultsReady, gate
   return console('overview', event, body, {
     user, event,
     extraActions,
+    // Archiving is reversible, so the control is always present. Hiding it on
+    // an archived event would make a mistake permanent.
+    actions: `<form method="post" action="/o/${esc(event.slug)}/archive">
+        <button class="btn btn--sm btn--quiet" type="submit" onclick="return confirm('${event.status === 'archived' ? 'Put this hackathon back in the directory?' : 'Archive this hackathon? It disappears from the directory. Nothing is deleted.'}')">${event.status === 'archived' ? 'Restore to directory' : 'Archive'}</button>
+      </form>
+      ${event.status === 'archived' ? '<a class="btn btn--sm btn--ghost" href="/o">All hackathons</a>' : ''}`,
     title: event.name,
     subtitle: 'Organiser console',
     counts: { projects: snapshot.projects, judges: snapshot.judges, teams: snapshot.teams },

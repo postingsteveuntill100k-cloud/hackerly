@@ -282,6 +282,24 @@ function parseEventForm(body, isNew) {
   return { values, errors };
 }
 
+/**
+ * Archive or restore an event. Archiving hides it from the directory without
+ * touching a single record, which is what an organiser who created an event by
+ * mistake actually wants — and what the human critic uses to clean up after
+ * itself.
+ */
+router.post('/o/:slug/archive', (req, res) => {
+  const event = req.organiserEvent;
+  const archiving = event.status !== 'archived';
+  db().prepare('UPDATE events SET status = ?, updated_at = ? WHERE id = ?')
+    .run(archiving ? 'archived' : 'published', now(), event.id);
+  audit.record({
+    actor: req.actor, eventId: event.id,
+    action: archiving ? 'event.archive' : 'event.unarchive', resourceType: 'event', resourceId: event.id,
+  });
+  res.redirect('/o');
+});
+
 /* ----------------------------------------------------------------- tracks */
 
 router.get('/o/:slug/tracks', (req, res) => {

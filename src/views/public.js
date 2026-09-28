@@ -246,10 +246,11 @@ function hackathonsPage({ user, events, topics, filters, resultCount }) {
     ${hasFilters ? `<a class="btn btn--sm btn--quiet" href="/hackathons">Clear</a>` : ''}
   </form>
 
-  ${topics.length ? `<div class="cluster mb-3">
-    <a class="badge${!topic ? ' badge--solid' : ''}" href="/hackathons${state ? `?state=${encodeURIComponent(state)}` : ''}">All topics</a>
-    ${topics.slice(0, 14).map((t) => `<a class="badge${topic === t.name ? ' badge--solid' : ''}" href="/hackathons?topic=${encodeURIComponent(t.name)}${state ? `&state=${encodeURIComponent(state)}` : ''}">${esc(t.name)} <span class="divider-dots">${t.n}</span></a>`).join('')}
-  </div>` : ''}
+  ${topics.length ? `<nav class="topic-filter" aria-label="Filter by topic">
+    <a href="/hackathons${state ? `?state=${encodeURIComponent(state)}` : ''}"${topic ? '' : ' aria-current="true"'}>All topics</a>
+    ${topics.slice(0, 12).map((t) => `<a href="/hackathons?topic=${encodeURIComponent(t.name)}${state ? `&state=${encodeURIComponent(state)}` : ''}"${topic === t.name ? ' aria-current="true"' : ''}>${esc(t.name)} <span class="n">${t.n}</span></a>`).join('')}
+    ${topics.length > 12 ? `<span class="topic-filter__more">and ${topics.length - 12} more</span>` : ''}
+  </nav>` : ''}
 
   ${events.length
     ? `<div class="grid grid--3">${events.map((e) => eventCard(e)).join('')}</div>
@@ -315,6 +316,51 @@ function showcasePage({ user, projects, facets, filters }) {
 }
 
 /* ------------------------------------------------------------ host / about */
+
+function organiserHomePage({ user, events, archived }) {
+  const card = (e) => `<a class="card" href="/o/${esc(e.slug)}">
+    ${c.artBox(e.slug, { className: 'mb-1' })}
+    <div class="cluster cluster--between cluster--start">${c.statusBadge(e.phase)}<span class="badge">${esc(e.formatLabel)}</span></div>
+    <h3 class="card__title">${esc(e.name)}</h3>
+    <p class="card__body">${esc(e.detail)}</p>
+    <div class="card__foot"><span>${esc(e.dates)}</span><span>${esc(e.action)}</span></div>
+  </a>`;
+
+  const body = `<div class="wrap">
+  <div class="section-head">
+    <div class="eyebrow">Organiser console</div>
+    <h1>Your hackathons</h1>
+    <p>${events.length ? 'Everything you are running, and where each one stands.' : 'You are not running anything yet.'}</p>
+  </div>
+
+  <div class="btn-row mb-4">
+    <a class="btn btn--accent" href="/host/new">Create a hackathon</a>
+    <a class="btn btn--ghost" href="/host">What hosting involves</a>
+  </div>
+
+  ${events.length ? `<div class="grid grid--3">${events.map(card).join('')}</div>` : c.empty(
+    'Nothing yet',
+    'A hackathon on Hackerly starts with a name, a set of dates and a rubric. Everything else you can change later.',
+    '<a class="btn btn--accent" href="/host/new">Create your first hackathon</a>')}
+
+  ${archived.length ? `<section class="section">
+    <div class="eyebrow">Archived</div>
+    <h2 style="font-size:var(--step-2)">No longer listed</h2>
+    <p class="small muted">Hidden from the directory. Nothing was deleted.</p>
+    <div class="list">
+      ${archived.map((e) => `<a class="list-row" href="/o/${esc(e.slug)}">
+        <div class="list-row__main">
+          <div class="list-row__title">${esc(e.name)}</div>
+          <div class="list-row__sub">${esc(e.dates)}</div>
+        </div>
+        <div class="list-row__side"><span class="badge">Archived</span></div>
+      </a>`).join('')}
+    </div>
+  </section>` : ''}
+</div>`;
+
+  return c.appLayout({ title: 'Your hackathons', user, body });
+}
 
 function hostPage({ user }) {
   const body = `
@@ -516,6 +562,7 @@ function aboutPage({ user, stats }) {
 
 module.exports = {
   homePage,
+  organiserHomePage,
   hackathonsPage,
   showcasePage,
   hostPage,
