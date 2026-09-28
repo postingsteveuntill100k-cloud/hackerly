@@ -195,7 +195,7 @@ function participantPage({
     title: `Your entry · ${event.name}`,
     user: viewer.user,
     event,
-    nav: participantNav(event, viewer, registration, project, 'overview').match(/href="[^"]+"/g) || [],
+    nav: participantNavItems(event, registration, project),
     current: `/p/${event.slug}`,
     body,
   });
@@ -404,7 +404,14 @@ function teamPage({ event, viewer, team, invitations, gate, errors = {}, notice 
   ${event.allowSolo ? `<div class="mt-3">${c.note('info', 'You can also <a href="/p/' + esc(event.slug) + '/project">start a project on your own</a> without creating a team.')}</div>` : ''}`}
 </div>`;
 
-  return c.appLayout({ title: 'Team', user: viewer.user, event, body });
+  return c.appLayout({
+    title: 'Team',
+    user: viewer.user,
+    event,
+    nav: [[`/p/${event.slug}`, 'Overview'], [`/p/${event.slug}/team`, 'Team'], [`/p/${event.slug}/project`, 'Project']],
+    current: `/p/${event.slug}/team`,
+    body,
+  });
 }
 
 /* --------------------------------------------------------- project editor */
@@ -520,18 +527,29 @@ function projectEditor({ event, viewer, project, team, fields, errors = {}, noti
   </form>
 </div>`;
 
-  return c.appLayout({ title: 'Your project', user: viewer.user, event, body });
+  return c.appLayout({
+    title: 'Your project',
+    user: viewer.user,
+    event,
+    nav: [[`/p/${event.slug}`, 'Overview'], [`/p/${event.slug}/team`, 'Team'], [`/p/${event.slug}/project`, 'Project']],
+    current: `/p/${event.slug}/project`,
+    body,
+  });
+}
+
+/** The workspace tabs, as [href, label] pairs for the app header. */
+function participantNavItems(event, registration, project) {
+  const items = [[`/p/${event.slug}`, 'Overview']];
+  if (registration) {
+    items.push([`/p/${event.slug}/team`, 'Team']);
+    items.push([`/p/${event.slug}/project`, project ? 'Project' : 'Build']);
+  }
+  if (lc.phase(event) === 'results') items.push([`/h/${event.slug}/results`, 'Results']);
+  return items;
 }
 
 function participantNav(event, viewer, registration, project, current) {
-  const items = [
-    ['/p/' + event.slug, 'Overview'],
-  ];
-  if (registration) {
-    items.push(['/p/' + event.slug + '/team', 'Team']);
-    items.push(['/p/' + event.slug + '/project', project ? 'Project' : 'Build']);
-  }
-  if (lc.phase(event) === 'results') items.push(['/h/' + event.slug + '/results', 'Results']);
+  const items = participantNavItems(event, registration, project);
   return `<div class="console__mobile">${items.map(([h, l]) => `<a href="${esc(h)}"${current === h ? ' aria-current="page"' : ''}>${esc(l)}</a>`).join('')}</div>`;
 }
 

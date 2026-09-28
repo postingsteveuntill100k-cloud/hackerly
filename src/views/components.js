@@ -297,8 +297,9 @@ function siteHeader({ user = null, current = '' } = {}) {
         <summary class="user-pill" aria-label="Account menu">${avatar(user, 'sm')} ${esc(user.name.split(' ')[0])}</summary>
         <div class="usermenu__panel">
           <div class="usermenu__id"><b>${esc(user.name)}</b><span>${esc(user.email)}</span></div>
-          <a href="/dashboard">Your hackathons</a>
-          <a href="/host/new">Host a hackathon</a>
+          <a href="/dashboard">Your workspace</a>
+          <a href="/o">Hackathons you run</a>
+          <a href="/host/new">Create a hackathon</a>
           <a href="/about">About Hackerly</a>
           <form method="post" action="/signout"><button class="usermenu__out" type="submit">Sign out</button></form>
         </div>
@@ -379,8 +380,9 @@ function appHeader({ user, event = null, nav = [], current = '' }) {
               <b>${esc(user && user.name)}</b>
               ${user && user.email ? `<span>${esc(user.email)}</span>` : ''}
             </div>
-            <a href="/dashboard">Your hackathons</a>
-            <a href="/host/new">Host a hackathon</a>
+            <a href="/dashboard">Your workspace</a>
+            <a href="/o">Hackathons you run</a>
+            <a href="/host/new">Create a hackathon</a>
             <a href="/about">About Hackerly</a>
             <form method="post" action="/signout">
               <button class="usermenu__out" type="submit">Sign out</button>

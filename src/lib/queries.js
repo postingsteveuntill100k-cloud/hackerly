@@ -304,7 +304,10 @@ function projectCard(p, opts = {}) {
   };
 }
 
-function projectsForEvent(eventId, { publicOnly = true, trackId = null, search = '' } = {}) {
+function projectsForEvent(eventId, opts = {}) {
+  const {
+    publicOnly = true, trackId = null, search = '', limit = 200, offset = 0, countOnly = false,
+  } = opts;
   const where = ['p.event_id = ?'];
   const params = [eventId];
   if (publicOnly) {
@@ -317,10 +320,16 @@ function projectsForEvent(eventId, { publicOnly = true, trackId = null, search =
     const q = `%${search.toLowerCase()}%`;
     params.push(q, q);
   }
+  if (countOnly) {
+    return db().prepare(`
+      SELECT COUNT(*) AS n FROM projects p WHERE ${where.join(' AND ')}
+    `).get(...params).n;
+  }
   return db().prepare(`
     SELECT p.* FROM projects p WHERE ${where.join(' AND ')}
     ORDER BY p.submitted_at DESC, p.name
-  `).all(...params).map((p) => projectCard(p, { internal: !publicOnly }));
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset).map((p) => projectCard(p, { internal: !publicOnly }));
 }
 
 /** The full judging / showcase detail for one project. */
@@ -373,7 +382,7 @@ function projectBySlug(eventId, slug) {
 }
 
 /** Public showcase across every visible event. */
-function showcase({ search = '', track = '', tech = '', limit = 60, awardedOnly = false } = {}) {
+function showcase({ search = '', track = '', tech = '', limit = 60, awardedOnly = false, offset = 0 } = {}) {
   const rows = db().prepare(`
     SELECT p.*, e.name AS event_name, e.slug AS event_slug, e.country, e.ends_at
     FROM projects p JOIN events e ON e.id = p.event_id
@@ -405,7 +414,36 @@ function showcase({ search = '', track = '', tech = '', limit = 60, awardedOnly 
   if (track) results = results.filter((p) => p.trackName === track);
   if (tech) results = results.filter((p) => p.techStack.includes(tech));
   if (awardedOnly) results = results.filter((p) => p.award);
-  return results.slice(0, limit);
+  return interleaveByEvent(results).slice(offset, offset + limit);
+}
+
+/**
+ * A gallery ordered purely by date is a monoculture: one large, recent event
+ * pushes every other event — and every finished event — off page one. Take one
+ * project from each event in turn instead, most recently active event first, so
+ * the first page is a spread of everything on the platform. Within an event the
+ * order is still newest first.
+ */
+function interleaveByEvent(rows) {
+  const queues = [];
+  const byEvent = new Map();
+  for (const p of rows) {
+    if (!byEvent.has(p.eventSlug)) { byEvent.set(p.eventSlug, []); queues.push(byEvent.get(p.eventSlug)); }
+    byEvent.get(p.eventSlug).push(p);
+  }
+  const woven = [];
+  for (let i = 0; ; i += 1) {
+    let added = false;
+    for (const q of queues) {
+      if (q[i]) { woven.push(q[i]); added = true; }
+    }
+    if (!added) return woven;
+  }
+}
+
+/** How many projects match a showcase query, for pagination. */
+function showcaseCount({ search = '', track = '', tech = '', awardedOnly = false } = {}) {
+  return showcase({ search, track, tech, awardedOnly, limit: Number.MAX_SAFE_INTEGER }).length;
 }
 
 function showcaseFacets() {
@@ -662,6 +700,7 @@ module.exports = {
   projectDetail,
   projectBySlug,
   showcase,
+  showcaseCount,
   showcaseFacets,
   publishedResults,
   reviewFor,

@@ -44,6 +44,11 @@ router.get('/hackathons', (req, res) => {
   }));
 });
 
+// Generous, because a gallery that truncates hard hides finished work behind a
+// pager: the archive is the point of the page. Still paginated, because an
+// install with thousands of submissions should not render thousands of cards.
+const SHOWCASE_PAGE_SIZE = 48;
+
 router.get('/projects', (req, res) => {
   const filters = {
     search: String(req.query.q || '').slice(0, 80),
@@ -51,11 +56,21 @@ router.get('/projects', (req, res) => {
     tech: String(req.query.tech || '').slice(0, 40),
     awarded: req.query.awarded === '1',
   };
+  // The query layer calls it awardedOnly; the form and the view call it awarded.
+  const query = { ...filters, awardedOnly: filters.awarded };
+  const total = queries.showcaseCount(query);
+  const pages = Math.max(1, Math.ceil(total / SHOWCASE_PAGE_SIZE));
+  const page = Math.min(pages, Math.max(1, Number.parseInt(req.query.page, 10) || 1));
+
   res.send(views.showcasePage({
     user: req.actor.user,
-    projects: queries.showcase({ ...filters, limit: 60 }),
+    projects: queries.showcase({ ...query, limit: SHOWCASE_PAGE_SIZE, offset: (page - 1) * SHOWCASE_PAGE_SIZE }),
     facets: queries.showcaseFacets(),
     filters,
+    total,
+    page,
+    pages,
+    pageSize: SHOWCASE_PAGE_SIZE,
   }));
 });
 

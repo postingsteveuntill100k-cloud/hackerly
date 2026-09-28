@@ -9,7 +9,7 @@ const { projectCard } = require('./public');
  * The event page. Sections appear only when the event actually has content,
  * because an empty "Prizes" heading is worse than no heading at all.
  */
-function eventPage({ event, viewer, sections, results, tabs, currentTab }) {
+function eventPage({ event, viewer, sections, results, tabs, currentTab, pageHref }) {
   const phase = lc.phase(event);
   const where = c.formatLocation(event);
 
@@ -66,7 +66,7 @@ function eventPage({ event, viewer, sections, results, tabs, currentTab }) {
 </nav>
 
 ${currentTab === 'overview' ? overview({ event, sections, results, viewer })
-    : currentTab === 'projects' ? projectsTab({ event, sections, viewer })
+    : currentTab === 'projects' ? projectsTab({ event, sections, viewer, pageHref })
       : currentTab === 'results' ? resultsTab({ event, results })
         : ''}`;
 
@@ -300,7 +300,7 @@ function overview({ event, sections, results, viewer }) {
   return out.join('\n');
 }
 
-function projectsTab({ event, sections, viewer }) {
+function projectsTab({ event, sections, viewer, pageHref }) {
   const projects = sections.projects;
   if (!projects.length) {
     return `<div class="wrap bay">${c.empty(
@@ -310,9 +310,13 @@ function projectsTab({ event, sections, viewer }) {
         : 'The organisers have kept submissions private for this event.',
     )}</div>`;
   }
+  const { page, pages, total, pageSize } = sections.projectPage;
+  const noun = (n) => `${n} project${n === 1 ? '' : 's'}`;
   return `<div class="wrap bay">
-    ${c.sectionHead({ eyebrow: 'Projects', title: 'What teams built', body: `${projects.length} project${projects.length === 1 ? '' : 's'} opted into the public showcase.` })}
+    ${c.sectionHead({ eyebrow: 'Projects', title: 'What teams built', body: `${noun(total)} opted into the public showcase.` })}
     <div class="grid grid--3">${projects.map((p) => projectCard(p, { showEvent: false })).join('')}</div>
+    <p class="small muted mt-3">Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${noun(total)}.</p>
+    ${c.pagination(page, pages, pageHref || ((p) => `/h/${event.slug}/projects${p > 1 ? `?page=${p}` : ''}`))}
   </div>`;
 }
 

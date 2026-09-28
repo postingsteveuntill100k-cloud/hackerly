@@ -19,7 +19,9 @@ import base64
 import json
 import os
 import re
+import shutil
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -34,6 +36,7 @@ ACCOUNTS = {
     "participant": "participant@hackerly.dev",
 }
 PASSWORD = "hackerly-demo"
+CHROME = "google-chrome-stable"
 
 
 # --------------------------------------------------------------------- driver
@@ -107,6 +110,13 @@ class Browser:
     def go(self, path, wait=1.1):
         url = path if path.startswith("http") else BASE + path
         self.cmd("WebDriver:Navigate", {"url": url})
+        for _ in range(80):
+            try:
+                if self.js("() => document.readyState") in ("interactive", "complete"):
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
         time.sleep(wait)
         return self.url()
 
@@ -178,6 +188,296 @@ class Browser:
             # No visible sign-out control; clear the cookie directly.
             self.js("() => { document.cookie = 'hkl_session=; Max-Age=0; path=/'; return true; }")
         self.go("/", wait=0.8)
+
+
+class CdpSocket:
+    """Minimal Chrome DevTools Protocol client over a raw WebSocket."""
+
+    def __init__(self, profile, width, height, chrome):
+        import base64
+        import hashlib
+        import socket as _socket
+        import struct as _struct
+
+        self._struct = _struct
+        self.proc = subprocess.Popen(
+            [chrome, "--headless=new", "--remote-debugging-port=0", "--no-sandbox",
+             "--disable-gpu", "--disable-dev-shm-usage", "--no-first-run",
+             "--no-default-browser-check", "--disable-extensions",
+             f"--user-data-dir={profile}", f"--window-size={width},{height}", "about:blank"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+        )
+        endpoint = None
+        for _ in range(120):
+            line = self.proc.stderr.readline()
+            if not line:
+                time.sleep(0.1)
+                continue
+            if "DevTools listening on" in line:
+                endpoint = line.split("ws://", 1)[1].strip()
+                break
+        if not endpoint:
+            raise RuntimeError("Chrome did not report a DevTools endpoint")
+
+        host, _, rest = endpoint.partition("/")
+        hostname, _, port = host.partition(":")
+        self.sock = _socket.create_connection((hostname, int(port)), timeout=10)
+        self.sock.settimeout(30)
+
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall((
+            f"GET /{rest} HTTP/1.1\r\n"
+            f"Host: {host}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        ).encode())
+        expected = base64.b64encode(hashlib.sha1(
+            (key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+        header = b""
+        while b"\r\n\r\n" not in header:
+            header += self.sock.recv(1)
+        if expected.encode() not in header:
+            raise RuntimeError("WebSocket handshake failed")
+
+        self.msg_id = 0
+
+    def _send(self, payload):
+        data = json.dumps(payload).encode()
+        mask = os.urandom(4)
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(data))
+        length = len(masked)
+        if length < 126:
+            header = bytes([0x81, 0x80 | length])
+        elif length < 65536:
+            header = bytes([0x81, 0xFE]) + self._struct.pack("!H", length)
+        else:
+            header = bytes([0x81, 0xFF]) + self._struct.pack("!Q", length)
+        self.sock.sendall(header + mask + masked)
+
+    def _recv(self, n):
+        buf = b""
+        while len(buf) < n:
+            chunk = self.sock.recv(n - len(buf))
+            if not chunk:
+                raise EOFError
+            buf += chunk
+        return buf
+
+    def _frame(self):
+        first = self._recv(2)
+        length = first[1] & 0x7F
+        if length == 126:
+            length = int.from_bytes(self._recv(2), "big")
+        elif length == 127:
+            length = int.from_bytes(self._recv(8), "big")
+        return self._recv(length).decode("utf-8", "replace")
+
+    def call(self, method, params=None, session=None):
+        self.msg_id += 1
+        message = {"id": self.msg_id, "method": method, "params": params or {}}
+        if session:
+            message["sessionId"] = session
+        self._send(message)
+        while True:
+            raw = json.loads(self._frame())
+            if raw.get("method") == "Page.javascriptDialogOpening":
+                # Chrome blocks the page until a dialog is answered, so accept
+                # every one of them. A person clicking "Archive" gets asked to
+                # confirm; the critic should not have to.
+                self.msg_id += 1
+                self._send({
+                    "id": self.msg_id,
+                    "method": "Page.handleJavaScriptDialog",
+                    "params": {"accept": True},
+                    "sessionId": session,
+                })
+                continue
+            if raw.get("id") == self.msg_id:
+                if "error" in raw:
+                    raise RuntimeError(f"{method}: {raw['error'].get('message')}")
+                return raw.get("result", {})
+
+    def close(self):
+        try:
+            self.sock.close()
+        except Exception:
+            pass
+        if self.proc:
+            self.proc.terminate()
+
+
+class ChromeBrowser:
+    """
+    The same surface as Browser, driven over the Chrome DevTools Protocol.
+
+    The critic must run on whatever machine Hackerly is developed on, so it
+    works with Firefox or Chrome rather than depending on one of them.
+    """
+
+    def __init__(self, width=1440, height=1000):
+        self.width = width
+        self.height = height
+        self.shot_n = 0
+        self.cdp = None
+        self.session = None
+
+    def start(self):
+        os.makedirs(SHOTS, exist_ok=True)
+        profile = f"/tmp/opencode/cdp-{int(time.time()*1000)}"
+        os.makedirs(profile, exist_ok=True)
+        self.cdp = CdpSocket(profile, self.width, self.height, CHROME)
+        target = self.cdp.call("Target.createTarget", {"url": "about:blank"})["targetId"]
+        self.session = self.cdp.call(
+            "Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
+        for method in ("Page.enable", "Runtime.enable"):
+            self.cdp.call(method, {}, self.session)
+        return self
+
+    def close(self):
+        if self.cdp:
+            self.cdp.close()
+
+    def go(self, path, wait=1.1):
+        url = path if path.startswith("http") else BASE + path
+        # Stamp the current document first. Reading readyState straight after a
+        # navigate can answer for the page we are leaving, which is how a
+        # silent sign-in failure turns into a fake FAIL three findings later.
+        stamp = str(int(time.time() * 1000)) + str(self.shot_n)
+        self.js("() => { window.__criticStamp = " + json.dumps(stamp) + "; return true; }")
+        self.cdp.call("Page.navigate", {"url": url}, self.session)
+        self._await_ready(stamp)
+        time.sleep(wait)
+        return self.url()
+
+    def _await_ready(self, stamp=None, timeout=12.0):
+        """Block until the *new* document has loaded, rather than guessing."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                state = self.cdp.call("Runtime.evaluate", {
+                    "expression": "({ready: document.readyState, stamped: window.__criticStamp || null})",
+                    "returnByValue": True,
+                }, self.session)
+                value = state.get("result", {}).get("value") or {}
+                # A document we have just replaced carries no stamp; the page we
+                # left keeps the one we wrote a moment ago.
+                if value.get("ready") in ("interactive", "complete") \
+                        and (stamp is None or value.get("stamped") != stamp):
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.1)
+        return False
+
+    def url(self):
+        return self.js("() => document.location.href") or ""
+
+    def title(self):
+        return self.js("() => document.title") or ""
+
+    def js(self, script, args=None):
+        # Call sites pass a whole arrow function, which may have a block body
+        # and may use arguments[n] inside it. An arrow function has no
+        # `arguments` of its own, so those references are rewritten to a real
+        # array and the function is applied to it.
+        fn = script.strip().replace("arguments[", "__c[")
+        if args:
+            # The caller's function is created *inside* the wrapper's body, so
+            # the arguments it closes over are in scope. An arrow passed as a
+            # call argument would be created in the enclosing scope instead.
+            expression = ("((__c) => { try { const f = (" + fn
+                          + "); return f.apply(null, __c); }"
+                          + " catch (e) { return {__error: String(e)}; } })("
+                          + json.dumps(args) + ")")
+        else:
+            expression = ("(() => { try { return (" + fn
+                          + ")(); } catch (e) { return {__error: String(e)}; } })()")
+        result = self.cdp.call("Runtime.evaluate", {
+            "expression": expression, "returnByValue": True, "awaitPromise": True,
+        }, self.session)
+        value = result.get("result", {}).get("value")
+        if isinstance(value, dict) and "__error" in value:
+            return {"error": value["__error"]}
+        return value
+
+    def text(self):
+        return self.js(
+            "() => document.body.innerText.replace(/[ \\t]+/g, ' ').replace(/\\n{3,}/g, '\\n\\n').trim()") or ""
+
+    def shot(self, name):
+        self.shot_n += 1
+        path = f"{SHOTS}/{self.shot_n:02d}-{re.sub(r'[^a-z0-9-]+', '-', name.lower())[:60]}.png"
+        data = self.cdp.call("Page.captureScreenshot", {
+            "format": "png", "captureBeyondViewport": True,
+        }, self.session).get("data")
+        if data:
+            with open(path, "wb") as f:
+                f.write(base64.b64decode(data))
+        return path
+
+    def click(self, selector, wait=0.8):
+        before = self.js("() => document.location.href")
+        ok = self.js(
+            "() => { const el = document.querySelector(arguments[0]); if (!el) return false;"
+            " el.scrollIntoView({block:'center'}); el.click(); return true; }", [selector])
+        time.sleep(wait)
+        after = self.js("() => document.location.href")
+        if ok and after != before:
+            self._await_ready()
+            time.sleep(0.3)
+        return ok
+
+    def fill(self, selector, value, wait=0.2):
+        return self.js("""() => {
+            const el = document.querySelector(arguments[0]);
+            if (!el) return false;
+            el.focus();
+            el.value = arguments[1];
+            el.dispatchEvent(new Event('input', {bubbles:true}));
+            el.dispatchEvent(new Event('change', {bubbles:true}));
+            return true;
+        }""", [selector, value])
+
+    def sign_in(self, who):
+        # Verify the sign-in landed instead of trusting it. A silent failure
+        # reads as every downstream finding failing, which is a critic bug, not
+        # a product one.
+        for attempt in (1, 2):
+            self.go("/signin")
+            self.fill("input[name=email]", ACCOUNTS[who])
+            self.fill("input[name=password]", PASSWORD)
+            self.click("form[action='/signin'] button[type=submit]", wait=1.8)
+            landed = self.url()
+            if "/signin" not in landed:
+                return landed
+            out(f"  (sign-in as {who} did not land on attempt {attempt}: {landed})")
+        raise SystemExit(f"the critic could not sign in as {who}")
+
+    def sign_out(self):
+        # Chrome raises a dialog for the archive confirm, so stub it first.
+        self.js("() => { window.confirm = () => true; return true; }")
+        self.go("/", wait=0.6)
+        done = self.js("() => { const f = document.querySelector('form[action=\"/signout\"]');"
+                       " if (f) { f.submit(); return true; } return false; }")
+        if not done:
+            self.js("() => { document.cookie = 'hkl_session=; Max-Age=0; path=/'; return true; }")
+        self.go("/", wait=0.9)
+
+
+def make_browser(width, height):
+    """Firefox with Marionette when it is installed, Chrome otherwise."""
+    if shutil.which("firefox"):
+        return Browser(width, height)
+    chrome = (shutil.which("google-chrome-stable") or shutil.which("google-chrome")
+              or shutil.which("chromium"))
+    if chrome:
+        global CHROME
+        CHROME = chrome
+        return ChromeBrowser(width, height)
+    raise SystemExit(
+        "The critic needs Firefox or Chrome. Install one, or run the HTTP suites with `npm test`.")
 
 
 # ------------------------------------------------------------------ reporting
@@ -313,7 +613,9 @@ def critic_organiser(b, r):
     b.sign_in("organiser")
     b.go("/o/signal-2026")
     t = b.text()
-    f.append({"verdict": "good", "note": "Organiser console opens", "shot": b.shot("org-overview")})
+    f.append({"verdict": "good" if b.url().endswith("/o/signal-2026") else "bad",
+              "note": f"Organiser console opens ({b.url()})",
+              "shot": b.shot("org-overview")})
     for tab in ("Tracks & challenges", "Rubric", "Judges", "Results", "Announcements"):
         f.append({"verdict": "good" if tab.lower() in t.lower() else "bad",
                   "note": f"Console exposes '{tab}'" if tab.lower() in t.lower() else f"Console is missing '{tab}'"})
@@ -550,8 +852,9 @@ def main():
     args = ap.parse_args()
 
     out(f"Hackerly human critic against {BASE}")
-    b = Browser(args.width, args.height)
+    b = make_browser(args.width, args.height)
     b.start()
+    out(f"  driving {type(b).__name__}")
     r = Report()
     try:
         for name, fn in PERSONAS.items():

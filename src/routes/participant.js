@@ -129,7 +129,7 @@ router.get('/p/:slug', (req, res, next) => {
       : null;
 
     const gates = buildGates(event, { registration, team, project, user });
-    const checklist = buildChecklist(event, project);
+    const checklist = buildChecklist(event, project ? projectView(project) : null);
     const results = buildParticipantResults(event, project, user);
 
     const announcementCount = db().prepare('SELECT COUNT(*) AS n FROM announcements WHERE event_id = ?').get(event.id).n;
@@ -494,7 +494,7 @@ function sendEditor(req, res, event, project, { errors = {}, notice }, status = 
     errors,
     notice,
     gate,
-    checklist: buildChecklist(event, project),
+    checklist: buildChecklist(event, project ? projectView(project) : null),
   }));
 }
 

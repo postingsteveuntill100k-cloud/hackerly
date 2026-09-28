@@ -33,6 +33,8 @@ router.get('/h/:slug/:tab', (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+const EVENT_PROJECT_PAGE_SIZE = 24;
+
 function render(req, event, tab) {
   const viewer = buildViewer(req, event);
   const sections = {
@@ -66,14 +68,26 @@ function render(req, event, tab) {
   const resultsReleased = authz.resultsArePublic(event);
   const results = resultsReleased ? queries.publishedResults(event.id) : [];
 
+  // A closed event with forty submissions should not be one endless grid.
+  const projectCount = queries.projectsForEvent(event.id, { publicOnly: true, countOnly: true });
+  const pages = Math.max(1, Math.ceil(projectCount / EVENT_PROJECT_PAGE_SIZE));
+  const page = Math.min(pages, Math.max(1, Number.parseInt(req.query.page, 10) || 1));
+  sections.projectPage = { page, pages, total: projectCount, pageSize: EVENT_PROJECT_PAGE_SIZE };
+  sections.projects = queries.projectsForEvent(event.id, {
+    publicOnly: true,
+    limit: EVENT_PROJECT_PAGE_SIZE,
+    offset: (page - 1) * EVENT_PROJECT_PAGE_SIZE,
+  });
+
   return views.eventPage({
     event: publicEvent(event),
     viewer,
     sections,
     results,
+    pageHref: (p) => `/h/${event.slug}/projects${p > 1 ? `?page=${p}` : ''}`,
     tabs: TABS.map((t) => ({
       ...t,
-      count: t.key === 'projects' ? sections.projects.length
+      count: t.key === 'projects' ? projectCount
         : t.key === 'results' ? (resultsReleased ? results.length : null) : undefined,
     })),
     currentTab: tab,

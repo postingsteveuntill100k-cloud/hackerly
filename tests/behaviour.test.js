@@ -350,3 +350,43 @@ test('every page carries a sign-out control once signed in', async () => {
     assert.ok(html.includes('action="/signout"'), `${page} offers no way to sign out`);
   }
 });
+
+test('the showcase counts its own page honestly and honours every filter', async () => {
+  // The pager said "1-24" while rendering 48, and "Awarded only" did nothing.
+  // Both were invisible to a reader and obvious to a test.
+  const shown = (html) => {
+    const m = html.match(/Showing (\d+)–(\d+) of (\d+)/);
+    return m ? { from: +m[1], to: +m[2], of: +m[3] } : null;
+  };
+
+  const all = await (await fetch(`${base}/projects`)).text();
+  const page1 = shown(all);
+  assert.ok(page1, 'the showcase says what it is showing');
+  const cards = (all.match(/<a class="card" href="\/p\/[^"]+\/[^"]+"/g) || []).length;
+  assert.equal(page1.to - page1.from + 1, cards, 'the range matches the cards on the page');
+  assert.ok(page1.of >= cards, 'the total is not smaller than the page');
+
+  const page2 = shown(await (await fetch(`${base}/projects?page=2`)).text());
+  assert.equal(page2.from, page1.to + 1, 'page two starts where page one ended');
+  assert.equal(page2.of, page1.of, 'the total is stable across pages');
+
+  const awarded = await (await fetch(`${base}/projects?awarded=1`)).text();
+  const awardedRange = shown(awarded);
+  assert.ok(awardedRange.of < page1.of, '"Awarded only" actually narrows the list');
+  assert.ok(/Overall winner|Second place|Third place/.test(awarded), 'awarded results are shown');
+
+  const tracked = await (await fetch(`${base}/projects?track=Resilient`)).text();
+  assert.ok(shown(tracked).of < page1.of, 'the track filter actually narrows the list');
+
+  const searched = await (await fetch(`${base}/projects?q=licence`)).text();
+  assert.ok(shown(searched).of < page1.of, 'search actually narrows the list');
+});
+
+test('the showcase spreads across events instead of letting one event bury the rest', async () => {
+  // Strictly newest-first turned page one into a single event. Every visible
+  // event has to appear on the first page, or the archive is unreachable.
+  const html = await (await fetch(`${base}/projects`)).text();
+  const events = [...new Set((html.match(/Sample Hack 2026|Foundry 2026|Signal 2026/g) || []))];
+  assert.deepEqual(events.sort(), ['Foundry 2026', 'Sample Hack 2026', 'Signal 2026'],
+    'the first page shows work from every visible event');
+});

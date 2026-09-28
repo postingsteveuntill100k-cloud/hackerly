@@ -270,9 +270,12 @@ function hackathonsPage({ user, events, topics, filters, resultCount }) {
   });
 }
 
-function showcasePage({ user, projects, facets, filters }) {
+function showcasePage({ user, projects, facets, filters, total = 0, page = 1, pages = 1, pageSize = 24 }) {
   const { search, track, tech, awarded } = filters;
   const hasFilters = Boolean(search || track || tech || awarded);
+  const pageHref = (p) => `/projects${qs({
+    q: search, track, tech, awarded: awarded ? '1' : '', page: p > 1 ? p : '',
+  })}`;
   const body = `
 <div class="wrap" style="padding-top:clamp(2rem,1.5rem+2vw,3.2rem)">
   <div class="section-head">
@@ -299,7 +302,9 @@ function showcasePage({ user, projects, facets, filters }) {
   </form>
 
   ${projects.length
-    ? `<div class="grid grid--3">${projects.map((p) => projectCard(p)).join('')}</div>`
+    ? `<div class="grid grid--3">${projects.map((p) => projectCard(p)).join('')}</div>
+       <p class="small muted mt-3">Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total} project${total === 1 ? '' : 's'}.</p>
+       ${c.pagination(page, pages, pageHref)}`
     : c.empty('No projects to show', hasFilters
       ? 'Nothing in the showcase matches those filters yet.'
       : 'No project has opted into the public showcase on this installation yet.',
