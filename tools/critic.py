@@ -787,7 +787,7 @@ def critic_host_new(b, r):
 
     b.fill("input[name=name]", "Critic Test Event")
     b.fill("input[name=tagline]", "A throwaway event created by the human critic to check the flow works end to end.")
-    b.fill("input[name=about]", "Created automatically during the critic run. Safe to delete.")
+    b.fill("input[name=about]", "Created automatically during the critic run. Archived again at the end of it.")
     b.fill("input[name=timezone]", "Europe/London")
     b.fill("input[name=startsAt]", "2027-04-09T09:00")
     b.fill("input[name=endsAt]", "2027-04-10T18:00")
@@ -867,6 +867,9 @@ def main():
     finally:
         bad, meh = r.summary()
         out(f"\n  screenshots: {SHOTS}")
+        out("  note: the critic creates a real event to test the flow, and leaves it"
+            "\n        archived. Re-seed to get a clean database:"
+            "\n          rm -f data/hackerly.db* && node src/db/seed/cli.js")
         b.close()
     return 1 if bad else 0
 
