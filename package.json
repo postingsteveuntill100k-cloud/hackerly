@@ -2,7 +2,7 @@
   "name": "hackerly",
   "version": "1.0.0",
   "private": true,
-  "description": "Hackerly — the hackathon platform. Discover, host, build, judge and showcase hackathons.",
+  "description": "Hackerly \u2014 the hackathon platform. Discover, host, build, judge and showcase hackathons.",
   "license": "MIT",
   "type": "commonjs",
   "main": "src/server.js",
@@ -17,7 +17,9 @@
     "check:db": "node src/db/seed/cli.js --check",
     "test": "node --test --test-concurrency=1 tests/*.test.js",
     "acceptance": "python3 run.py .dogfood.toml",
-    "critic": "python3 tools/critic.py"
+    "critic": "python3 tools/critic.py",
+    "export:static": "node scripts/export-static.js",
+    "deploy:firebase": "npm run export:static && firebase deploy --only hosting --project nexuslabs-b7b5e"
   },
   "keywords": [
     "hackathon",

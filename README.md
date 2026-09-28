@@ -200,26 +200,40 @@ HACKERLY_PORT=8080 PUBLIC_ORIGIN=https://hackathon.example.com docker compose up
 
 Behind a reverse proxy, set `SECURE_COOKIES=true` and `TRUST_PROXY=true`.
 
-### Firebase Hosting for the front end
+### Firebase Hosting for the public site
 
-The static assets in `public/` are a complete progressive-enhancement front
-end: every page works with JavaScript disabled. Hosting them on Firebase
-serves the marketing and showcase surfaces from the edge.
+`.firebaserc` pins the default project to **nexuslabs-b7b5e**. Verify it before
+changing anything else:
 
 ```bash
-npm install -g firebase-tools
-firebase login
-firebase deploy --only hosting --project nexuslabs-b7b5e
+cat .firebaserc          # the default project is the one Hackerly deploys to
 ```
 
-`.firebaserc` pins the default project. The Firestore ruleset denies
-everything, because Hackerly does not use Firestore for application data and
-a misconfiguration should fail loudly.
+Hackerly renders pages on the server, so a static host needs a snapshot of
+them. `scripts/export-static.js` fetches every anonymous public page from a
+running instance and writes a complete static mirror to `dist/`: the homepage,
+the directory, every event page, the showcase, every project page, the hosting
+page and the about page. Only anonymous `GET`s are fetched, so nothing
+user-specific is exported and no cookie is sent.
 
-Note that Firebase Hosting serves static files only. The interactive parts of
-Hackerly — signing in, submitting, scoring, the organiser console — need the
-Node application behind it. Point a reverse proxy at the container and let
-Firebase serve the public assets, or just run Hackerly on its own.
+```bash
+npm start                                  # or docker compose up
+npm run export:static                      # writes dist/
+npm run deploy:firebase                    # export, then deploy to nexuslabs-b7b5e
+```
+
+That is what is deployed at <https://nexuslabs-b7b5e.web.app>.
+
+**What Firebase Hosting can and cannot do here.** It serves the public surface
+— marketing, discovery, event pages, the showcase — from the edge. It cannot
+serve the interactive product: signing in, submitting, scoring and the
+organiser console are all POSTs and authenticated reads against the Node
+application. Point a reverse proxy at the container for those, or run Hackerly
+on its own. Splitting them is a real deployment shape, not a workaround.
+
+The Firestore ruleset denies everything, because Hackerly does not use
+Firestore for application data and a misconfiguration should fail loudly
+rather than quietly open a database.
 
 ---
 

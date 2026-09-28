@@ -60,7 +60,8 @@ router.get('/projects', (req, res) => {
 });
 
 router.get('/host', (req, res) => {
-  if (!req.user) return res.redirect('/signup?next=/host/new');
+  // The page explains what hosting involves; that is worth reading before
+  // anyone is asked to make an account.
   res.send(views.hostPage({ user: req.actor.user }));
 });
 

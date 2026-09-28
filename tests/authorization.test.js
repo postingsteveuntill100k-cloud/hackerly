@@ -365,6 +365,109 @@ test('a judge of one event cannot judge another', async () => {
   assert.equal(res.status, 403, 'judge access is per event');
 });
 
+test('a deadline closes the door from the server, not from the page', async () => {
+  // A throwaway event with generous dates, created and closed entirely through
+  // the public routes. Nothing in this test touches the database directly, so
+  // it proves the gate rather than the implementation of the gate.
+  const form = (path, body, cookie) => fetch(app.base + path, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...(cookie ? { Cookie: `session=${cookie}` } : {}),
+    },
+    body: new URLSearchParams(body).toString(),
+  });
+
+  const created = await form('/host/new', {
+    name: 'Deadline probe',
+    tagline: 'An event created to prove that the submission gate is server-side.',
+    about: 'Created by the test suite.',
+    timezone: 'UTC',
+    startsAt: '2026-09-01T09:00',
+    endsAt: '2026-12-01T18:00',
+    submissionsCloseAt: '2026-12-01T16:00',
+    registrationOpensAt: '2026-08-01T09:00',
+    registrationClosesAt: '2026-11-30T00:00',
+    allowSolo: '1',
+    showProjects: '1',
+  }, TOKENS.organiser);
+  assert.equal(created.status, 302);
+  const slug = (created.headers.get('location') || '').split('/').pop();
+  assert.ok(slug, 'the event was created');
+
+  // Register while registration is open.
+  const registered = await form(`/p/${slug}/register`, { rules: '1' }, TOKENS.participant);
+  assert.equal(registered.status, 302, 'registration succeeds while the window is open');
+
+  // A valid submission is accepted.
+  const before = await form(`/p/${slug}/project`, {
+    action: 'save',
+    name: 'Before the deadline',
+    tagline: 'A draft written while submissions are still open, which should be accepted.',
+    description: 'This description is comfortably longer than the forty character minimum the server enforces on every submission.',
+  }, TOKENS.participant);
+  assert.equal(before.status, 302, 'a submission before the deadline is accepted');
+
+  // Now move the deadline into the past, the way an organiser would. The
+  // portal refuses a deadline that precedes the start, so this closes the
+  // window at a date that is in the past but still inside the event.
+  const closed = await form(`/o/${slug}/event`, {
+    name: 'Deadline probe',
+    tagline: 'An event created to prove that the submission gate is server-side.',
+    about: 'Created by the test suite.',
+    timezone: 'UTC',
+    startsAt: '2026-09-01T09:00',
+    endsAt: '2026-12-01T18:00',
+    submissionsCloseAt: '2026-09-20T16:00',
+    registrationOpensAt: '2026-08-01T09:00',
+    registrationClosesAt: '2026-11-30T00:00',
+    allowSolo: '1',
+    showProjects: '1',
+  }, TOKENS.organiser);
+  assert.equal(closed.status, 302, 'the organiser can move the deadline');
+
+  // The portal will not let you set a deadline before the event begins.
+  const nonsensical = await form(`/o/${slug}/event`, {
+    name: 'Deadline probe',
+    tagline: 'An event created to prove that the submission gate is server-side.',
+    about: 'Created by the test suite.',
+    timezone: 'UTC',
+    startsAt: '2026-09-01T09:00',
+    endsAt: '2026-12-01T18:00',
+    submissionsCloseAt: '2026-01-01T00:00',
+    allowSolo: '1',
+    showProjects: '1',
+  }, TOKENS.organiser);
+  assert.equal(nonsensical.status, 422, 'a deadline before the start is refused, and said so');
+
+  // The same submission is now refused, with the deadline as the reason.
+  const after = await fetch(`${app.base}/p/${slug}/project`, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      Cookie: `session=${TOKENS.participant}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      action: 'submit',
+      name: 'After the deadline',
+      tagline: 'A perfectly well formed submission that arrives after the door has closed.',
+      description: 'This description is comfortably longer than the forty character minimum the server enforces on every submission.',
+    }).toString(),
+  });
+  assert.equal(after.status, 409, 'a submission after the deadline is refused with 409');
+  const body = await after.json();
+  assert.match(body.message, /closed/i);
+
+  // And the page itself says so, rather than offering a form that will fail.
+  const page = await get(`/p/${slug}/project`, { cookie: TOKENS.participant });
+  const html = await page.text();
+  assert.match(html, /closed/i);
+  assert.ok(html.includes('disabled'), 'the submit control is disabled once the window has shut');
+});
+
 /* --------------------------------------------------------------- injection */
 
 test('user content is escaped, not rendered', async () => {

@@ -324,7 +324,7 @@ function hostPage({ user }) {
     <h1 class="display" style="font-size:var(--step-5);max-width:16ch">Put on the whole event, not just a form.</h1>
     <p class="lede mt-2">Create the hackathon, set the rules that matter, run registration, watch submissions arrive, get judging done properly, and publish results. All on one instance you control.</p>
     <div class="hero__actions">
-      <a class="btn btn--lg btn--accent" href="${user ? '/host/new' : '/signup'}">Create a hackathon</a>
+      <a class="btn btn--lg btn--accent" href="/host/new">Create a hackathon</a>
       <a class="btn btn--lg btn--ghost" href="#judging">See the judging engine</a>
     </div>
   </div>
@@ -365,16 +365,12 @@ function hostPage({ user }) {
       <div class="panel">
         <div class="panel__head"><h3 style="margin:0">Judging progress</h3><span class="badge badge--warn">Judging open</span></div>
         <div class="stack">
-          ${meter(11, 15, { label: '11 of 15 reviews submitted', right: '73%' })}
+          ${c.meter(11, 15, { label: '11 of 15 reviews submitted', right: '73%' })}
           ${[
-    ['A. Okonkwo', '8 / 9', 0.89],
-    ['M. Lindqvist', '5 / 6', 0.83],
-    ['S. Duarte', '4 / 5', 0.8],
-  ].map(([n, s, p]) => `<div class="cluster cluster--between">
-            <span class="small">${esc(n)}</span>
-            <span class="mono small">${esc(s)}</span>
-            <div style="flex:1"><div class="meter__track"><div class="meter__fill" style="width:${p * 100}%"></div></div></div>
-          </div>`).join('')}
+    ['A. Okonkwo', '8 of 9 reviews', 8 / 9],
+    ['M. Lindqvist', '5 of 6 reviews', 5 / 6],
+    ['S. Duarte', '4 of 5 reviews', 4 / 5],
+  ].map(([n, label, p]) => c.meter(p, 1, { label: n, right: label })).join('')}
         </div>
         <hr>
         <p class="small muted mb-0">An illustration. Live figures come from your own event.</p>
@@ -415,7 +411,7 @@ docker compose up --build
   <div class="wrap"><div class="cta-band">
     <h2>Ready to put on an event?</h2>
     <p>It takes about two minutes to create one, and you can change every detail afterwards.</p>
-    <a class="btn btn--lg btn--accent" href="${user ? '/host/new' : '/signup'}">Create a hackathon</a>
+    <a class="btn btn--lg btn--accent" href="/host/new">Create a hackathon</a>
   </div></div>
 </section>`;
 

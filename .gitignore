@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Static export output
+dist/
+
 # Local database and its write-ahead log
 data/
 *.db
@@ -30,3 +33,4 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+dist/
